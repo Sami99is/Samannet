@@ -240,7 +240,7 @@ def handle_query(call):
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ خطا در واریز پاداش: {e}", show_alert=True)
 
-    # --- استخراج (ماین ۲۴ ساعته) اصلاح‌شده با حل صحیح Proof of Work ---
+    # --- استخراج (ماین ۲۴ ساعته) اصلاح‌شده با الگوریتم دقیق ---
     elif call.data == "mine":
         try:
             chal_res = requests.get(f"{NODE_URL}/api/mine/challenge")
@@ -253,7 +253,7 @@ def handle_query(call):
             difficulty = chal_data.get('difficulty', 3)
             
             nonce = 0
-            while nonce < 500000:
+            while nonce < 2000000:
                 val = f"{wallet_address}{timestamp}{nonce}"
                 h = hashlib.sha256(val.encode()).hexdigest()
                 if h.startswith('0' * difficulty):
@@ -265,9 +265,9 @@ def handle_query(call):
             data = res.json()
             
             if res.status_code == 200 and data.get("status") == "success":
-                bot.send_message(call.message.chat.id, f"✅ استخراج موفقیت‌آمیز بود!\n💰 موجودی جدید شما: {data['balance']:,.2f} AFIX")
+                bot.send_message(call.message.chat.id, f"✅ استخراج موفقیت‌آمیز بود!\n💰 موجودی جدید شما: {data.get('balance', 0):,.2f} AFIX")
             else:
-                err_msg = data.get("error", "هنوز زمان استخراج ۲۴ ساعته‌ی شما فرا نرسیده است.")
+                err_msg = data.get("error", "اثبات کار نامعتبر است.")
                 bot.send_message(call.message.chat.id, f"⚠️ {err_msg}")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"❌ خطای پردازش ماین: {e}")
@@ -384,7 +384,7 @@ def handle_query(call):
     elif call.data == "back_home":
         bot.send_message(call.message.chat.id, "منوی اصلی:", reply_markup=main_menu_markup(user_id))
 
-# --- مدیریت پیام‌های متنی برای انتقال ارز (آدرس و مقدار) ---
+# --- مدیریت پیام‌های متنی برای انتقال ارز ---
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
     user_id = message.from_user.id
@@ -411,7 +411,7 @@ def handle_text_messages(message):
             if res.status_code == 200 and data.get("status") == "success":
                 bot.reply_to(message, f"✅ انتقال با موفقیت انجام شد!\nمبلغ {amount} AFIX به آدرس `{to_addr}` واریز گردید.", parse_mode="Markdown")
             else:
-                err = data.get("error", "اطلاعات تراکنش ناقص یا نامعتبر است.")
+                err = data.get("error", "اطلاعات تراکنش ناقص است.")
                 bot.reply_to(message, f"❌ انجام نشد: {err}")
         except Exception as e:
             bot.reply_to(message, f"❌ خطای ارتباط با سرور برای انتقال: {e}")
