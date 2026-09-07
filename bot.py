@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import time
+import hashlib
 
 # --- تنظیمات اصلی ---
 BOT_TOKEN = "8936504596:AAGdlz2_-QetRjYLRW8b8ln3jN7lvsATNDk"
@@ -239,29 +240,25 @@ def handle_query(call):
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ خطا در واریز پاداش: {e}", show_alert=True)
 
-    # --- استخراج (ماین ۲۴ ساعته) - اصلاح شده مطابق ساختار سرور ---
+    # --- استخراج (ماین ۲۴ ساعته) اصلاح‌شده با حل صحیح Proof of Work ---
     elif call.data == "mine":
         try:
             chal_res = requests.get(f"{NODE_URL}/api/mine/challenge")
             if chal_res.status_code != 200:
-                bot.send_message(call.message.chat.id, "❌ خطا در دریافت چالش ماین از سرور.")
+                bot.send_message(call.message.chat.id, "❌ خطا در برقراری ارتباط با سرور ماینینگ.")
                 return
             
             chal_data = chal_res.json()
             timestamp = chal_data.get('timestamp')
             difficulty = chal_data.get('difficulty', 3)
             
-            # حل ساده‌ی اثبات کار (Proof of Work) برای جلوگیری از خطای سرور
             nonce = 0
-            while True:
-                import hashlib
+            while nonce < 500000:
                 val = f"{wallet_address}{timestamp}{nonce}"
                 h = hashlib.sha256(val.encode()).hexdigest()
                 if h.startswith('0' * difficulty):
                     break
                 nonce += 1
-                if nonce > 200000: # جلوگیری از فریز شدن
-                    break
 
             payload = {"address": wallet_address, "nonce": nonce, "timestamp": timestamp}
             res = requests.post(f"{NODE_URL}/api/mine/submit", json=payload)
@@ -273,13 +270,13 @@ def handle_query(call):
                 err_msg = data.get("error", "هنوز زمان استخراج ۲۴ ساعته‌ی شما فرا نرسیده است.")
                 bot.send_message(call.message.chat.id, f"⚠️ {err_msg}")
         except Exception as e:
-            bot.send_message(call.message.chat.id, f"❌ خطا در عملیات استخراج: {e}")
+            bot.send_message(call.message.chat.id, f"❌ خطای پردازش ماین: {e}")
 
     # --- انتقال ارز ---
     elif call.data == "transfer_menu":
         text = (f"💸 **بخش انتقال ارز AFIX**\n\n"
                 f"• کارمزد شبکه: **0.01 AFIX**\n\n"
-                f"برای انتقال، اطلاعات را به این صورت بفرستید:\n`آدرس_مقصد مقدار`\n(مثال: `AFIX_usr_123456 5`)")
+                f"برای انتقال، اطلاعات را به این صورت در یک پیام بفرستید:\n`آدرس_مقصد مقدار`\n(مثال: `AFIX_usr_123456 5`)")
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🔙 بازگشت", callback_data="back_home"))
         bot.send_message(call.message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
@@ -387,7 +384,7 @@ def handle_query(call):
     elif call.data == "back_home":
         bot.send_message(call.message.chat.id, "منوی اصلی:", reply_markup=main_menu_markup(user_id))
 
-# --- مدیریت پیام‌های متنی برای انتقال ارز ---
+# --- مدیریت پیام‌های متنی برای انتقال ارز (آدرس و مقدار) ---
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
     user_id = message.from_user.id
@@ -402,9 +399,8 @@ def handle_text_messages(message):
         if not wallet_address:
             return
 
-    # بررسی اگر کاربر فرمت انتقال ارز را فرستاده باشد: آدرس_مقصد مقدار
     parts = text.split()
-    if len(parts) == 2 and (parts[1].replace('.', '', 1).isdigit()):
+    if len(parts) == 2 and parts[1].replace('.', '', 1).isdigit():
         to_addr = parts[0]
         try:
             amount = float(parts[1])
@@ -415,12 +411,12 @@ def handle_text_messages(message):
             if res.status_code == 200 and data.get("status") == "success":
                 bot.reply_to(message, f"✅ انتقال با موفقیت انجام شد!\nمبلغ {amount} AFIX به آدرس `{to_addr}` واریز گردید.", parse_mode="Markdown")
             else:
-                err = data.get("error", "خطا در انجام تراکنش.")
+                err = data.get("error", "اطلاعات تراکنش ناقص یا نامعتبر است.")
                 bot.reply_to(message, f"❌ انجام نشد: {err}")
         except Exception as e:
-            bot.reply_to(message, f"❌ خطای پردازش تراکنش: {e}")
+            bot.reply_to(message, f"❌ خطای ارتباط با سرور برای انتقال: {e}")
 
-# توابع کمکی
+# توابع کمکی ادمین
 def save_new_channel(message):
     if message.from_user.id != ADMIN_ID: return
     ch = message.text.strip()
