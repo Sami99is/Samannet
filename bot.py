@@ -229,7 +229,7 @@ def handle_query(call):
             return
             
         try:
-            payload = {"from_address": ADMIN_WALLET, "to_address": wallet_address, "amount": reward}
+            payload = {"sender": ADMIN_WALLET, "recipient": wallet_address, "amount": reward}
             res = requests.post(f"{NODE_URL}/api/transfer", json=payload)
             
             completed_list.append(t_id)
@@ -240,37 +240,43 @@ def handle_query(call):
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ خطا در واریز پاداش: {e}", show_alert=True)
 
-    # --- استخراج (ماین ۲۴ ساعته) اصلاح‌شده با الگوریتم دقیق ---
+    # --- استخراج (ماین ۲۴ ساعته) با سختی کاملاً داینامیک و هماهنگ با سرور ---
     elif call.data == "mine":
+        msg = bot.send_message(call.message.chat.id, "⚙️ در حال دریافت چالش و استخراج هش (PoW)... لطفاً کمی صبر کنید.")
         try:
             chal_res = requests.get(f"{NODE_URL}/api/mine/challenge")
             if chal_res.status_code != 200:
-                bot.send_message(call.message.chat.id, "❌ خطا در برقراری ارتباط با سرور ماینینگ.")
+                bot.edit_message_text("❌ خطا در برقراری ارتباط با سرور ماینینگ.", call.message.chat.id, msg.message_id)
                 return
             
             chal_data = chal_res.json()
             timestamp = chal_data.get('timestamp')
-            difficulty = chal_data.get('difficulty', 3)
+            target_prefix = chal_data.get('target_prefix', '00000') # سختی هوشمند برگشتی از سرور
             
             nonce = 0
-            while nonce < 2000000:
-                val = f"{wallet_address}{timestamp}{nonce}"
+            # بازه جستجوی وسیع برای سختی‌های بالا
+            while nonce < 50000000:
+                # فرمت دقیق هش با خط تیره مطابق سرور اصلی
+                val = f"{wallet_address}-{nonce}-{timestamp}"
                 h = hashlib.sha256(val.encode()).hexdigest()
-                if h.startswith('0' * difficulty):
+                if h.startswith(target_prefix):
                     break
                 nonce += 1
+            else:
+                bot.edit_message_text("⚠️ استخراج به دلیل سختی بالای شبکه در بازه مجاز انجام نشد. دوباره تلاش کنید.", call.message.chat.id, msg.message_id)
+                return
 
             payload = {"address": wallet_address, "nonce": nonce, "timestamp": timestamp}
             res = requests.post(f"{NODE_URL}/api/mine/submit", json=payload)
             data = res.json()
             
             if res.status_code == 200 and data.get("status") == "success":
-                bot.send_message(call.message.chat.id, f"✅ استخراج موفقیت‌آمیز بود!\n💰 موجودی جدید شما: {data.get('balance', 0):,.2f} AFIX")
+                bot.edit_message_text(f"✅ استخراج موفقیت‌آمیز بود!\n\n💰 موجودی جدید شما: {data.get('balance', 0):,.2f} AFIX", call.message.chat.id, msg.message_id)
             else:
                 err_msg = data.get("error", "اثبات کار نامعتبر است.")
-                bot.send_message(call.message.chat.id, f"⚠️ {err_msg}")
+                bot.edit_message_text(f"⚠️ {err_msg}", call.message.chat.id, msg.message_id)
         except Exception as e:
-            bot.send_message(call.message.chat.id, f"❌ خطای پردازش ماین: {e}")
+            bot.edit_message_text(f"❌ خطای پردازش ماین: {e}", call.message.chat.id, msg.message_id)
 
     # --- انتقال ارز ---
     elif call.data == "transfer_menu":
@@ -306,6 +312,7 @@ def handle_query(call):
     elif call.data == "info":
         text = (f"ℹ️ درباره شبکه AFIX:\n\n"
                 f"• سقف کل شبکه: ۲۱,۰۰۰,۰۰۰ واحد\n"
+                f"• الگوریتم: اثبات کار داینامیک (مشابه بیت‌کوین)\n"
                 f"• کارمزد انتقال: ۰.۰۱ AFIX")
         bot.send_message(call.message.chat.id, text)
 
@@ -384,7 +391,7 @@ def handle_query(call):
     elif call.data == "back_home":
         bot.send_message(call.message.chat.id, "منوی اصلی:", reply_markup=main_menu_markup(user_id))
 
-# --- مدیریت پیام‌های متنی برای انتقال ارز ---
+# --- مدیریت پیام‌های متنی برای انتقال ارز با کلیدهای استاندارد سرور ---
 @bot.message_handler(func=lambda message: True)
 def handle_text_messages(message):
     user_id = message.from_user.id
@@ -404,7 +411,8 @@ def handle_text_messages(message):
         to_addr = parts[0]
         try:
             amount = float(parts[1])
-            payload = {"from_address": wallet_address, "to_address": to_addr, "amount": amount}
+            # نام کلیدها دقیقاً مطابق با کنترلر پایتون روی سرور (sender و recipient)
+            payload = {"sender": wallet_address, "recipient": to_addr, "amount": amount}
             res = requests.post(f"{NODE_URL}/api/transfer", json=payload)
             data = res.json()
             
@@ -474,5 +482,5 @@ def remove_task_step(message):
         bot.reply_to(message, "❌ لطفاً فقط شناسه عددی را بفرستید.")
 
 if __name__ == "__main__":
-    print("🤖 Bot is running smoothly with fixed PoW mining & transfers...")
+    print("🤖 Bot is running smoothly with dynamic PoW mining & secure server sync...")
     bot.polling(none_stop=True)
